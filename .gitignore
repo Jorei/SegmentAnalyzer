@@ -1,0 +1,7 @@
+.vs
+
+**/*.tcx
+**/*.gpx
+**/*.csproj.user
+**/bin/
+**/obj/

@@ -1,0 +1,159 @@
+﻿@model ActivityViewModel
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"/>
+
+<script src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js'></script>
+<script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js">                  </script>
+<script src='https://cdn.plot.ly/plotly-2.16.1.min.js'>                         </script>
+
+<style>
+    #map              { width: 98vw; height: 49vh;}
+    #graph-difference { width: 98vw; }
+    #graph-histogram1 { width: 98vw; }
+    #graph-histogram2 { width: 98vw; }
+    #graph-histogram3 { width: 98vw; }
+</style>
+
+
+<form method="post" enctype="multipart/form-data">
+    <div style="float:left; border:1px solid black; margin:20px; width:500px">
+        <div style="margin:10px">
+            <label>Upload a segment trial:</label>
+        </div>
+        <div style="margin:10px">
+            <input type="file" name="file" class="form-control" />
+        </div>
+        <div style="margin:10px">
+            <button type="submit" class="btn btn-primary">Upload</button>
+        </div>
+    </div>
+</form>
+
+<form method="post" asp-controller="Home" asp-action="Select">
+    <div style="float:left; border:1px solid black; margin:20px; width:500px">
+        <div style="margin:10px">
+            <label>Choose segment:</label>
+            <select class="form-select" asp-items="@ViewBag.routes" asp-for="SelectedRoute"></select>
+        </div>
+        <div style="margin:10px">
+            <label>Choose segment trial 1:</label>
+            <select class="form-select" asp-items="@ViewBag.activities" asp-for="SelectedActivity1"></select>
+            </div>
+        <div style="margin:10px">
+            <label>Choose segment trial 2:</label>
+            <select class="form-select" asp-items="@ViewBag.activities" asp-for="SelectedActivity2"></select>
+        </div>
+        <div style="margin:10px">
+            <input type="submit" value="Select" />
+        </div>
+    </div>
+</form>
+
+<h3></h3>
+<div id='map'>
+    <script>
+        // Create leaflet map
+        var map = L.map('map').setView([51.52, 5.96], 13);
+
+        // Configure OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Draw route
+        var route = L.polyline(@(Json.Serialize(Model.Route.LatLng)), { color: 'black' }).addTo(map);
+        map.fitBounds(route.getBounds());
+
+        // Draw activity 1
+        L.polyline(@(Json.Serialize(Model.Activities[0].LatLng)), { color: 'red' }).addTo(map);
+        //@(Json.Serialize(Model.Activities[0].LatLng)).forEach(function (point) { L.circleMarker(point, { radius: 1, color: 'red' }).addTo(map) });
+
+        // Draw activity 2
+        L.polyline(@(Json.Serialize(Model.Activities[1].LatLng)), { color: 'blue' }).addTo(map);
+        //@(Json.Serialize(Model.Activities[1].LatLng)).forEach(function (point) { L.circleMarker(point, { radius: 1, color: 'blue' }).addTo(map) });
+
+    </script>
+</div>
+
+<h3>Time difference [@(Statistics.Time.Last()) sec]</h3>
+<div id='graph-difference'>
+    <script>
+        var difference = {
+            x: @(Json.Serialize(Statistics.Distance)),
+            y: @(Json.Serialize(Statistics.Time)),
+            type: 'scatter',
+            fill: 'tozeroy',
+            fillcolor:     'rgba(0,0,0,0.5)',
+            line: { color: 'rgba(0,0,0,1.0)' },
+        };
+
+        Plotly.newPlot('graph-difference', [difference], { xaxis: { title: { text: "[km]" } }, yaxis: { title: { text: "[sec]" } } });
+
+        var dictLat = new Object();
+        var dictLng = new Object();
+        for (let i = 0; i < @(Json.Serialize(Model.Route.Distance)).length; i++) {
+            dictLat[@(Json.Serialize(Model.Route.Distance))[i]] = @(Json.Serialize(Model.Route.LatLng))[i][0];
+            dictLng[@(Json.Serialize(Model.Route.Distance))[i]] = @(Json.Serialize(Model.Route.LatLng))[i][1];
+        }
+
+        var markerGroup = L.layerGroup().addTo(map);
+        document.getElementById('graph-difference').on('plotly_hover', function (data) 
+        {
+            map.removeLayer(markerGroup)
+            markerGroup = L.layerGroup().addTo(map);
+            L.circleMarker([dictLat[data.points[0].x], dictLng[data.points[0].x]], { radius: 3, color: 'red', fill: true, fillOpacity: 1.0 }).addTo(markerGroup);
+        });
+    </script>
+</div>
+
+<h3>Heartrate [@(Math.Round(Model.Activities[0].Heartrate.Average()))bpm vs @(Math.Round(Model.Activities[1].Heartrate.Average()))bpm]</h3>
+<div id='graph-histogram1'>
+    <script>
+        var histogram0 = {
+            y: @(Json.Serialize(Model.Activities[0].Heartrate)),
+            type: 'histogram',
+            opacity: 0.5,
+            hoverinfo: 'y',
+            ybins: { start: 150,
+                     size:  1, 
+                     end:   190 }
+        };
+        var histogram1 = {
+            y: @(Json.Serialize(Model.Activities[1].Heartrate)),
+            type: 'histogram',
+            opacity: 0.5,
+            hoverinfo: 'y',
+            ybins: { start: 150,
+                     size:  1, 
+                     end:   190 }
+        };
+
+        Plotly.newPlot('graph-histogram1', [histogram0, histogram1], { yaxis: { title: { text: "[bpm]" } }, barmode: "overlay", showlegend: false, xaxis: { visible: false } });
+    </script>
+</div>
+
+<h3>Cadans [@(Math.Round(Model.Activities[0].Cadans.Where(c => c > 55).Average()))rpm vs @(Math.Round(Model.Activities[1].Cadans.Where(c => c > 55).Average()))rpm]</h3>
+<div id='graph-histogram2'>
+    <script>
+        var histogram0 = {
+            y: @(Json.Serialize(Model.Activities[0].Cadans)),
+            type: 'histogram',
+            opacity: 0.5,
+            hoverinfo: 'y',
+            ybins: { start: 55,
+                     size:  1, 
+                     end:   85 }
+        };
+        var histogram1 = {
+            y: @(Json.Serialize(Model.Activities[1].Cadans)),
+            type: 'histogram',
+            opacity: 0.5,
+            hoverinfo: 'y',
+            ybins: { start: 55,
+                     size:  1, 
+                     end:   85 }
+        };
+
+        Plotly.newPlot('graph-histogram2', [histogram0, histogram1], { yaxis: { title: { text: "[rpm]" } }, barmode: "overlay", showlegend: false, xaxis: { visible: false } });
+    </script>
+</div>
